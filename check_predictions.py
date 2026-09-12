@@ -1,12 +1,13 @@
 """
-Quick qualitative/quantitative check of Dataset/best_model.pt on held-out
-validation samples. Rebuilds the exact same clip-based train/val split
-used in resume_training.py (same seed=42), picks a handful of validation
-triplets, runs inference, and saves a grid image comparing predicted vs.
-ground-truth ball position for visual inspection.
+Quick qualitative/quantitative check of Dataset/cricket_synth_best_model.pt
+on held-out cricket-synth validation samples. Rebuilds the exact same
+clip-based train/val split used in train_cricket_synth.py (same seed=42),
+picks a handful of validation triplets, runs inference, and saves a grid
+image comparing predicted vs. ground-truth ball position for visual
+inspection.
 
 Usage: .venv/Scripts/python.exe check_predictions.py
-Output: Dataset/predictions_preview.png
+Output: Dataset/cricket_synth_predictions_preview.png
 """
 import os
 import random
@@ -18,10 +19,11 @@ import numpy as np
 import torch
 
 import resume_training as rt
+import train_cricket_synth as tcs
 
 NUM_SAMPLES = 6
-MODEL_PATH = "Dataset/best_model.pt"
-OUT_PATH = "Dataset/predictions_preview.png"
+MODEL_PATH = "Dataset/cricket_synth_best_model.pt"
+OUT_PATH = "Dataset/cricket_synth_predictions_preview.png"
 DETECTION_THRESHOLD = 0.5
 
 
@@ -30,7 +32,7 @@ def main():
     print(f"Device: {DEVICE}")
 
     print("Building samples...")
-    samples = rt.build_samples()
+    samples = tcs.build_samples_cricket_synth()
     print(f"Total triplets: {len(samples)}")
 
     dataset = rt.TrackNetDataset(samples)
@@ -46,7 +48,7 @@ def main():
     shuffled_clips = unique_clips[:]
     rng.shuffle(shuffled_clips)
 
-    n_val_clips = max(1, int(len(shuffled_clips) * rt.VAL_FRACTION))
+    n_val_clips = max(1, int(len(shuffled_clips) * tcs.VAL_FRACTION))
     val_clips = set(shuffled_clips[:n_val_clips])
     val_indices = [i for i, cid in enumerate(clip_ids) if cid in val_clips]
     print(f"Val samples: {len(val_indices)} ({len(val_clips)} clips)")

@@ -1,14 +1,14 @@
 """
-Kaggle-ready training script for TrackNetV2 ball detection.
+Kaggle-ready training script for TrackNetV2-architecture cricket ball
+detection on the cricket-synth dataset.
 
-Same model/dataset/checkpoint logic as resume_training.py, adapted to run
-on Kaggle's free GPU notebooks:
-  - Locates the raw TrackNetV2 video/csv dataset under /kaggle/input
-    (wherever you attached it, whatever it got nested under).
-  - Extracts frames into /kaggle/temp (ephemeral scratch space, NOT saved
-    on commit -- keeps the committed output small and fast).
-  - Checkpoints (training_checkpoint.pt / best_model.pt / training_log.txt)
-    go to /kaggle/working, which IS saved when you commit a version.
+Same model/dataset/checkpoint logic as train_cricket_synth.py, adapted to
+run on Kaggle's free GPU notebooks:
+  - Locates the cricket-synth dataset (clips/ + labels/) under
+    /kaggle/input (wherever you attached it, whatever it got nested under).
+  - Checkpoints (cricket_synth_checkpoint.pt / cricket_synth_best_model.pt /
+    cricket_synth_training_log.txt) go to /kaggle/working, which IS saved
+    when you commit a version.
   - On startup, if no checkpoint exists yet in /kaggle/working, it looks
     for one under any attached /kaggle/input/<slug>/ dataset (e.g. the
     previous version's own output, added back in as input) and copies it
@@ -16,8 +16,8 @@ on Kaggle's free GPU notebooks:
     session time limits.
 
 Setup (one time):
-  1. Zip Dataset/TrackNetV2 (you already have TrackNetV2.zip at the repo
-     root) and upload it as a new Kaggle Dataset.
+  1. Zip the cricket-synth `out` folder (clips/, labels/) and upload it as
+     a new Kaggle Dataset.
   2. New Notebook -> Add Input -> your dataset. Settings -> Accelerator ->
      GPU (T4 x2 or P100). Internet can stay off.
   3. Paste this file into a single cell (or add it as a Notebook file) and
@@ -26,12 +26,13 @@ Setup (one time):
 
 To resume after a session's time limit is hit:
   1. Open the notebook version that just finished, note its output files
-     (training_checkpoint.pt etc. under its Output tab).
+     (cricket_synth_checkpoint.pt etc. under its Output tab).
   2. New session of the same notebook -> Add Input -> "Notebook Output
      Files" -> this notebook's latest version. Run again -- it auto-detects
      and resumes.
 """
 import copy
+import json
 import os
 import random
 import shutil
@@ -39,7 +40,6 @@ import time
 
 import cv2
 import numpy as np
-import pandas as pd
 import torch
 import torch.nn as nn
 
@@ -48,21 +48,18 @@ HEATMAP_SIGMA = 5
 VAL_FRACTION = 0.2
 BATCH_SIZE = 8
 POS_WEIGHT = 200.0
-NUM_EPOCHS = 5
-EARLY_STOPPING_PATIENCE = 2
+NUM_EPOCHS = 20
+EARLY_STOPPING_PATIENCE = 3
 CHECKPOINT_EVERY = 200
 
 ON_KAGGLE = os.path.isdir("/kaggle/input")
 WORK_DIR = "/kaggle/working" if ON_KAGGLE else "Dataset"
-SCRATCH_DIR = "/kaggle/temp" if ON_KAGGLE else WORK_DIR
 
 os.makedirs(WORK_DIR, exist_ok=True)
-os.makedirs(SCRATCH_DIR, exist_ok=True)
 
-FRAMES_BASE_OUTPUT = os.path.join(SCRATCH_DIR, "TrackNetV2_extracted_frames")
-CHECKPOINT_PATH = os.path.join(WORK_DIR, "training_checkpoint.pt")
-LOG_PATH = os.path.join(WORK_DIR, "training_log.txt")
-BEST_MODEL_PATH = os.path.join(WORK_DIR, "best_model.pt")
+CHECKPOINT_PATH = os.path.join(WORK_DIR, "cricket_synth_checkpoint.pt")
+LOG_PATH = os.path.join(WORK_DIR, "cricket_synth_training_log.txt")
+BEST_MODEL_PATH = os.path.join(WORK_DIR, "cricket_synth_best_model.pt")
 
 
 def log(msg):
@@ -72,60 +69,17 @@ def log(msg):
         f.write(line + "\n")
 
 
-def find_videos_dir(search_root):
-    """Locate the TrackNetV2 root dir regardless of how it got nested
-    under /kaggle/input -- looks for a .../<category>/<match>/csv/*_ball.csv
-    file and walks back up 3 levels."""
-    for dirpath, _dirnames, filenames in os.walk(search_root):
-        if os.path.basename(dirpath) == "csv" and any(f.endswith("_ball.csv") for f in filenames):
-            match_dir = os.path.dirname(dirpath)
-            category_dir = os.path.dirname(match_dir)
-            return os.path.dirname(category_dir)
+def find_cricket_synth_root(search_root):
+    """Locate the cricket-synth root dir regardless of how it got nested
+    under /kaggle/input -- looks for a .../clips + .../labels sibling pair
+    and returns their parent."""
+    for dirpath, dirnames, _filenames in os.walk(search_root):
+        if "clips" in dirnames and "labels" in dirnames:
+            return dirpath
     raise FileNotFoundError(
-        f"Could not find a TrackNetV2 csv/ folder anywhere under {search_root}. "
-        "Did you attach the dataset as a notebook input?"
+        f"Could not find a cricket-synth clips/+labels/ folder pair anywhere "
+        f"under {search_root}. Did you attach the dataset as a notebook input?"
     )
-
-
-def extract_frames(video_path, output_dir):
-    os.makedirs(output_dir, exist_ok=True)
-    existing_frames = [f for f in os.listdir(output_dir) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
-    if existing_frames:
-        return len(existing_frames)
-
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        log(f"Error: could not open video {video_path}")
-        return 0
-
-    i = 0
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        cv2.imwrite(os.path.join(output_dir, f"frame_{i:05d}.jpg"), frame)
-        i += 1
-    cap.release()
-    return i
-
-
-def extract_all_frames(videos_dir, frames_base_output):
-    log(f"Extracting frames: {videos_dir} -> {frames_base_output}")
-    n_videos = 0
-    for dirpath, _dirnames, filenames in os.walk(videos_dir):
-        for filename in filenames:
-            if not filename.endswith(".mp4"):
-                continue
-            video_file_path = os.path.join(dirpath, filename)
-            relative_path = os.path.relpath(video_file_path, videos_dir)
-            video_output_dir = os.path.join(
-                frames_base_output, os.path.dirname(relative_path), os.path.splitext(filename)[0]
-            )
-            extract_frames(video_file_path, video_output_dir)
-            n_videos += 1
-            if n_videos % 20 == 0:
-                log(f"  extracted {n_videos} clips so far...")
-    log(f"Frame extraction done: {n_videos} clips.")
 
 
 def restore_previous_checkpoint():
@@ -139,11 +93,11 @@ def restore_previous_checkpoint():
     for name in os.listdir("/kaggle/input"):
         candidate_dir = os.path.join("/kaggle/input", name)
         for dirpath, _dirnames, filenames in os.walk(candidate_dir):
-            if "training_checkpoint.pt" in filenames:
-                src = os.path.join(dirpath, "training_checkpoint.pt")
+            if "cricket_synth_checkpoint.pt" in filenames:
+                src = os.path.join(dirpath, "cricket_synth_checkpoint.pt")
                 log(f"Found previous checkpoint at {src}, copying into {WORK_DIR}...")
                 shutil.copy(src, CHECKPOINT_PATH)
-                for extra in ("best_model.pt", "training_log.txt"):
+                for extra in ("cricket_synth_best_model.pt", "cricket_synth_training_log.txt"):
                     extra_src = os.path.join(dirpath, extra)
                     if os.path.exists(extra_src):
                         shutil.copy(extra_src, os.path.join(WORK_DIR, extra))
@@ -278,50 +232,71 @@ class TrackNetV2(nn.Module):
         return out
 
 
-def build_samples(videos_dir, frames_base_output):
+def build_samples_cricket_synth(root):
+    clips_dir = os.path.join(root, "clips")
+    labels_dir = os.path.join(root, "labels")
+
     samples = []
-    for dirpath, dirnames, filenames in os.walk(frames_base_output):
-        if dirnames:
-            continue
-        frame_files = sorted(f for f in filenames if f.lower().endswith((".jpg", ".jpeg", ".png")))
-        if not frame_files:
-            continue
+    n_clips_used = 0
+    n_clips_skipped = 0
 
-        rel_path = os.path.relpath(dirpath, frames_base_output)
-        parts = rel_path.split(os.sep)
-        clip_name = parts[-1]
-        csv_parts = ["csv" if p == "video" else p for p in parts[:-1]]
-        csv_path = os.path.join(videos_dir, *csv_parts, f"{clip_name}_ball.csv")
-
-        if not os.path.exists(csv_path):
+    for label_file in sorted(os.listdir(labels_dir)):
+        if not label_file.endswith(".json"):
+            continue
+        clip_id = label_file[:-5]
+        clip_dir = os.path.join(clips_dir, clip_id)
+        if not os.path.isdir(clip_dir):
+            n_clips_skipped += 1
             continue
 
-        clip_labels = pd.read_csv(csv_path)
-        n = len(clip_labels)
-        frame_paths = [os.path.join(dirpath, f) for f in frame_files[:n]]
+        with open(os.path.join(labels_dir, label_file)) as f:
+            meta = json.load(f)
+
+        frame_pattern = meta["frame_pattern"]
+
+        frame_paths = []
+        frame_labels = []
+        ok = True
+        for entry in meta["frames"]:
+            frame_path = os.path.join(clip_dir, frame_pattern % entry["frame"])
+            if not os.path.exists(frame_path):
+                ok = False
+                break
+            visible = bool(entry.get("visible")) and entry.get("centre_px") is not None
+            if visible:
+                # centre_px is already an absolute top-left-origin pixel coordinate.
+                x, y = entry["centre_px"]
+            else:
+                x, y = 0.0, 0.0
+            frame_paths.append(frame_path)
+            frame_labels.append((1.0 if visible else 0.0, x, y))
+
+        if not ok or len(frame_paths) < WINDOW_SIZE:
+            n_clips_skipped += 1
+            continue
 
         for i in range(len(frame_paths) - WINDOW_SIZE + 1):
-            frame_path_1, frame_path_2, frame_path_3 = frame_paths[i], frame_paths[i + 1], frame_paths[i + 2]
-            label_1 = tuple(clip_labels.iloc[i][["Visibility", "X", "Y"]])
-            label_2 = tuple(clip_labels.iloc[i + 1][["Visibility", "X", "Y"]])
-            label_3 = tuple(clip_labels.iloc[i + 2][["Visibility", "X", "Y"]])
-            samples.append((frame_path_1, frame_path_2, frame_path_3, label_1, label_2, label_3))
+            samples.append((
+                frame_paths[i], frame_paths[i + 1], frame_paths[i + 2],
+                frame_labels[i], frame_labels[i + 1], frame_labels[i + 2],
+            ))
+        n_clips_used += 1
+
+    log(f"cricket-synth: {n_clips_used} clips used, {n_clips_skipped} skipped (missing frames/dir)")
     return samples
 
 
 def main():
     log(f"Running on Kaggle: {ON_KAGGLE}")
-    log(f"Work dir: {WORK_DIR}  Scratch dir: {SCRATCH_DIR}")
+    log(f"Work dir: {WORK_DIR}")
 
     if ON_KAGGLE:
-        videos_dir = find_videos_dir("/kaggle/input")
+        cricket_synth_root = find_cricket_synth_root("/kaggle/input")
     else:
-        videos_dir = "Dataset/TrackNetV2"
-    log(f"Videos dir: {videos_dir}")
+        cricket_synth_root = r"D:\Git-Repos\MAGNUS\Ball-Tracking\cricket-synth\out"
+    log(f"cricket-synth root: {cricket_synth_root}")
 
     restore_previous_checkpoint()
-
-    extract_all_frames(videos_dir, FRAMES_BASE_OUTPUT)
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     log(f"Device: {DEVICE}")
@@ -329,7 +304,7 @@ def main():
         log(f"GPU: {torch.cuda.get_device_name(DEVICE)}")
 
     log("Building samples...")
-    samples = build_samples(videos_dir, FRAMES_BASE_OUTPUT)
+    samples = build_samples_cricket_synth(cricket_synth_root)
     log(f"Built {len(samples)} sliding-window triplets")
 
     dataset = TrackNetDataset(samples)

@@ -1,3 +1,5 @@
 .venv/
 Dataset/
 *.zip
+__pycache__/
+*.pyc
