@@ -53,7 +53,7 @@ EARLY_STOPPING_PATIENCE = 3
 CHECKPOINT_EVERY = 200
 
 ON_KAGGLE = os.path.isdir("/kaggle/input")
-WORK_DIR = "/kaggle/working" if ON_KAGGLE else "Dataset"
+WORK_DIR = "/kaggle/working" if ON_KAGGLE else "Checkpoints"
 
 os.makedirs(WORK_DIR, exist_ok=True)
 

@@ -1,6 +1,7 @@
 .venv/
 Dataset/
 Checkpoints/
+Output/
 *.zip
 __pycache__/
 *.pyc
