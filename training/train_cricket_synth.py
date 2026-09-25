@@ -23,7 +23,7 @@ cricket-synth layout (see D:\\Git-Repos\\MAGNUS\\Ball-Tracking\\cricket-synth\\o
                                    trained on garbage coordinates, which was
                                    discarded.)
 
-Usage: .venv/Scripts/python.exe TrainingScripts/train_cricket_synth.py
+Usage: .venv/Scripts/python.exe training/train_cricket_synth.py
 """
 import copy
 import json
@@ -48,10 +48,10 @@ NUM_EPOCHS = 20
 EARLY_STOPPING_PATIENCE = 3
 CHECKPOINT_EVERY = 200
 
-CHECKPOINT_PATH = "Checkpoints/cricket_synth_checkpoint.pt"
-LOG_PATH = "Checkpoints/cricket_synth_training_log.txt"
-BEST_MODEL_PATH = "Checkpoints/cricket_synth_best_model.pt"
-os.makedirs("Checkpoints", exist_ok=True)
+CHECKPOINT_PATH = "checkpoints/cricket_synth_checkpoint.pt"
+LOG_PATH = "checkpoints/cricket_synth_training_log.txt"
+BEST_MODEL_PATH = "checkpoints/cricket_synth_best_model.pt"
+os.makedirs("checkpoints", exist_ok=True)
 
 
 def log(msg):

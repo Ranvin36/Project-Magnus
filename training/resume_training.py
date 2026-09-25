@@ -6,7 +6,7 @@ that dataset and training driver have been retired now that the project
 targets the cricket-synth dataset only (see train_cricket_synth.py). What
 remains here is the dataset-agnostic core -- model architecture, frame/label
 loading, and Gaussian-heatmap generation -- imported as `resume_training as rt`
-by train_cricket_synth.py and by Ball_Detection_Tracking.ipynb.
+by train_cricket_synth.py and by notebooks/ball_detection_tracking.ipynb.
 """
 import cv2
 import numpy as np
