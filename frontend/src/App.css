@@ -152,6 +152,7 @@ button { font: inherit; }
 .stage--done .stage__status { color: var(--ink); }
 .stage--done .stage__fill { background: var(--ink); }
 .stage--error .stage__status { color: #b3261e; }
+.input__error { margin: 10px 0 0; font-size: 12px; color: #b3261e; }
 
 .log { flex: 1; display: flex; flex-direction: column; padding: var(--pad); min-height: 180px; }
 .log__body {
@@ -179,6 +180,9 @@ button { font: inherit; }
 }
 .viewer__empty { margin: 0; padding: 20px; font-size: 13px; color: var(--ink-soft); }
 .viewer__video { width: 100%; height: 100%; object-fit: contain; background: #111; }
+.tracked { position: relative; width: 100%; height: 100%; }
+/* Clicks pass through the overlay so the video controls still work. */
+.tracked__overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 
 .metrics {
   margin: 14px 0 0;

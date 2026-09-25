@@ -1,8 +1,6 @@
-// Pipeline client. There is no backend yet, so runPipeline simulates the
-// three stages and returns no tracked video or metrics. Swap the body of
-// runPipeline for a real call (e.g. POST the file to a FastAPI server that
-// wraps the notebook's tracker) once one exists -- the UI only depends on
-// the callbacks and the returned shape below.
+// Pipeline client. Ball detection runs on the Python server (server/app.py in the
+// repo root), reached through the Vite proxy at /api. Physics modelling and
+// spin estimation don't exist yet, so those stages stay queued.
 
 export const STAGES = [
   { id: "detect", title: "Ball detection & tracking" },
@@ -10,28 +8,33 @@ export const STAGES = [
   { id: "spin", title: "Spin estimation" },
 ];
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
 /**
- * @param {File|{name:string,size:number}} file
+ * @param {File} file
  * @param {{ onStage: (id, patch) => void, onLog: (line: string) => void }} cb
- * @returns {Promise<{ videoUrl: string|null, metrics: object|null, mock: boolean }>}
+ * @returns {Promise<{ videoUrl: string, detections: object, metrics: object|null }>}
+ *   videoUrl is an H.264 copy of the upload served by the server (browsers
+ *   can't play the mp4v clips OpenCV writes). detections is the server's
+ *   JSON: { fps, width, height, n_frames, detections: [{ frame, t, u, v, conf }] }
+ *   with u, v in video pixels.
  */
 export async function runPipeline(file, { onStage, onLog }) {
   onLog(`Loaded ${file.name}`);
-  onLog("Backend not connected -- running simulated pipeline.");
+  onStage("detect", { status: "running", progress: 0.5 });
+  onLog("Ball detection & tracking: uploading to server…");
 
-  for (const stage of STAGES) {
-    onStage(stage.id, { status: "running", progress: 0 });
-    onLog(`${stage.title}: started`);
-    for (let p = 1; p <= 10; p++) {
-      await sleep(120);
-      onStage(stage.id, { progress: p / 10 });
-    }
-    onStage(stage.id, { status: "done", progress: 1 });
-    onLog(`${stage.title}: done`);
+  const body = new FormData();
+  body.append("video", file);
+  const res = await fetch("/api/detect", { method: "POST", body });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data) {
+    throw new Error(data?.error ?? `Server returned ${res.status}. Is server/app.py running?`);
   }
 
-  onLog("Simulated run complete. No results -- connect the backend.");
-  return { videoUrl: null, metrics: null, mock: true };
+  onStage("detect", { status: "done", progress: 1 });
+  onLog(
+    `Ball detection & tracking: ball found in ${data.detections.length}/${data.n_frames} frames ` +
+      `(${data.width}x${data.height} @ ${data.fps.toFixed(1)} fps)`,
+  );
+  onLog("Physics modelling and spin estimation are not built yet.");
+  return { videoUrl: data.video_url, detections: data, metrics: null };
 }

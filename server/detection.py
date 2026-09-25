@@ -15,7 +15,7 @@ import cv2
 import numpy as np
 import torch
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "training"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "training"))
 import resume_training as rt  # noqa: E402
 
 RESIZE_TO = (512, 288)  # (W, H) the model was trained at

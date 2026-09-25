@@ -2,6 +2,8 @@ import { useRef, useState } from "react";
 
 const SAMPLE_URL = "/sample.mp4";
 const SAMPLE_NAME = "main1000_000009_test.mp4";
+// Same list the server's pipeline.py accepts.
+const VIDEO_EXTS = /\.(mp4|mov|avi|mkv)$/i;
 
 function formatSize(bytes) {
   if (bytes == null) return "—";
@@ -32,10 +34,18 @@ export default function InputPanel({ video, runState, onSelect }) {
   const inputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
   const [loadingSample, setLoadingSample] = useState(false);
+  const [error, setError] = useState(null);
   const locked = runState === "running";
 
   const acceptFile = (file) => {
-    if (!file || !file.type.startsWith("video/")) return;
+    if (!file) return;
+    // Windows often reports no MIME type for .mkv/.avi, so check the extension too.
+    const isVideo = file.type.startsWith("video/") || VIDEO_EXTS.test(file.name);
+    if (!isVideo) {
+      setError(`"${file.name}" is not a video (use .mp4, .mov, .avi or .mkv).`);
+      return;
+    }
+    setError(null);
     onSelect({ file, name: file.name, size: file.size, url: URL.createObjectURL(file) });
   };
 
@@ -93,7 +103,7 @@ export default function InputPanel({ video, runState, onSelect }) {
         <input
           ref={inputRef}
           type="file"
-          accept="video/*"
+          accept="video/*,.mp4,.mov,.avi,.mkv"
           hidden
           onChange={(e) => {
             acceptFile(e.target.files?.[0]);
@@ -101,6 +111,8 @@ export default function InputPanel({ video, runState, onSelect }) {
           }}
         />
       </div>
+
+      {error && <p className="input__error" role="alert">{error}</p>}
 
       <dl className="meta">
         <div className="meta__row">

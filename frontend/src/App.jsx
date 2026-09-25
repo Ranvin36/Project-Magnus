@@ -16,23 +16,21 @@ export default function App() {
 
   useEffect(() => () => video?.url && URL.revokeObjectURL(video.url), [video]);
 
+  // Picking a video starts detection straight away; "Run tracking" re-runs it.
   const selectVideo = (next) => {
     setVideo(next);
-    setRunState("idle");
-    setStages(initialStages());
-    setLog([]);
-    setResult(null);
+    run(next);
   };
 
-  const run = async () => {
-    if (!video || runState === "running") return;
+  const run = async (target = video) => {
+    if (!target || runState === "running") return;
     setRunState("running");
     setStages(initialStages());
     setLog([]);
     setResult(null);
     const stamp = () => new Date().toLocaleTimeString([], { hour12: false });
     try {
-      const res = await runPipeline(video.file ?? video, {
+      const res = await runPipeline(target.file, {
         onStage: (id, patch) =>
           setStages((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } })),
         onLog: (line) => setLog((prev) => [...prev, `[${stamp()}] ${line}`]),
@@ -66,7 +64,7 @@ export default function App() {
           running={runState === "running"}
           stages={stages}
           log={log}
-          onRun={run}
+          onRun={() => run()}
         />
         <OutputPanel result={result} runState={runState} />
       </main>

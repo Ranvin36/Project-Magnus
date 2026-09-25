@@ -1,3 +1,5 @@
+import TrackedVideo from "./TrackedVideo.jsx";
+
 const METRICS = [
   { key: "releaseSpeed", label: "Release speed", unit: "km/h" },
   { key: "pitchSpeed", label: "Speed at pitch", unit: "km/h" },
@@ -9,7 +11,6 @@ const METRICS = [
 
 function placeholderText(result, runState) {
   if (runState === "running") return "Processing…";
-  if (result?.mock) return "Simulated run — connect the backend to see the tracked video.";
   if (runState === "error") return "Run failed. See the log.";
   return "Tracked video will appear here.";
 }
@@ -22,8 +23,8 @@ export default function OutputPanel({ result, runState }) {
       <h2 className="section-label">Output</h2>
 
       <div className="viewer">
-        {result?.videoUrl ? (
-          <video className="viewer__video" src={result.videoUrl} controls autoPlay muted />
+        {result?.videoUrl && result.detections ? (
+          <TrackedVideo src={result.videoUrl} data={result.detections} />
         ) : (
           <p className="viewer__empty">{placeholderText(result, runState)}</p>
         )}

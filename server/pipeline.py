@@ -5,8 +5,8 @@ Stage 1 (detection) is wired up; physics modelling and spin estimation will
 consume DetectionResult.to_arrays() once they exist.
 
 Usage:
-  python pipeline.py
-  python pipeline.py --input trajectories --save-video
+  python server/pipeline.py
+  python server/pipeline.py --input trajectories --save-video
 """
 import argparse
 import json
@@ -17,27 +17,31 @@ import torch
 
 import detection
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
 DEFAULT_INPUT = os.path.join(ROOT, "trajectories")
 DEFAULT_WEIGHTS = os.path.join(ROOT, "checkpoints", "cricket_synth_70_15_15_best_model.pt")
 DEFAULT_OUTPUT = os.path.join(ROOT, "output", "pipeline")
 VIDEO_EXTS = (".mp4", ".mov", ".avi", ".mkv")
 
 
-def save_detections(result, path):
+def detections_to_dict(result):
     frames = [
         {"frame": i, "t": i / result.fps, "u": d[0], "v": d[1], "conf": d[2]}
         for i, d in enumerate(result.detections) if d is not None
     ]
+    return {
+        "video": os.path.basename(result.video_path),
+        "fps": result.fps,
+        "width": result.width,
+        "height": result.height,
+        "n_frames": len(result.detections),
+        "detections": frames,
+    }
+
+
+def save_detections(result, path):
     with open(path, "w") as f:
-        json.dump({
-            "video": os.path.basename(result.video_path),
-            "fps": result.fps,
-            "width": result.width,
-            "height": result.height,
-            "n_frames": len(result.detections),
-            "detections": frames,
-        }, f, indent=1)
+        json.dump(detections_to_dict(result), f, indent=1)
 
 
 def main():
