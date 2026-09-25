@@ -3,3 +3,4 @@ imageio-ffmpeg
 torch
 opencv-python
 numpy
+scipy

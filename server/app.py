@@ -1,5 +1,6 @@
 """
-Small HTTP server for the frontend: upload a video, get the ball detections back.
+Small HTTP server for the frontend: upload a video, get the ball detections and
+(when possible) the 3D flight back.
 
 Usage:
   python server/app.py
@@ -57,6 +58,12 @@ def detect():
     data = pipeline.detections_to_dict(result)
     data["video"] = video.filename
     data["video_url"] = f"/api/videos/{web_name}"
+
+    # Stage 2: 3D. A failure here still returns the detections.
+    try:
+        data["reconstruction"] = pipeline.reconstruct_3d(result, pipeline.find_label(video.filename))
+    except ValueError as err:
+        data["reconstruction_error"] = str(err)
     return jsonify(data)
 
 

@@ -4,9 +4,12 @@ const TRAIL_FRAMES = 7;
 const COLOR = "224, 85, 63"; // --accent
 
 // Plays the uploaded clip and draws the server's ball detections over it on a
-// canvas, so the browser never has to decode an OpenCV-encoded video.
-export default function TrackedVideo({ src, data }) {
-  const videoRef = useRef(null);
+// canvas, so the browser never has to decode an OpenCV-encoded video. When
+// there is a 3D flight, its path is drawn too, projected back into the image,
+// to show how closely the physics fit follows the detections.
+export default function TrackedVideo({ src, data, flight, videoRef: sharedRef }) {
+  const ownRef = useRef(null);
+  const videoRef = sharedRef ?? ownRef;
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -30,6 +33,15 @@ export default function TrackedVideo({ src, data }) {
 
       const ctx = canvas.getContext("2d");
       ctx.clearRect(0, 0, w, h);
+
+      if (flight) {
+        ctx.beginPath();
+        flight.frames.forEach((p, i) =>
+          (i ? ctx.lineTo : ctx.moveTo).call(ctx, offX + p.u * scale, offY + p.v * scale));
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
 
       const frame = Math.floor(video.currentTime * data.fps);
       for (let f = frame - TRAIL_FRAMES; f <= frame; f++) {
@@ -59,7 +71,7 @@ export default function TrackedVideo({ src, data }) {
 
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [data]);
+  }, [data, flight, videoRef]);
 
   return (
     <div className="tracked">
