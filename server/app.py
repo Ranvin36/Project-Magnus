@@ -1,13 +1,16 @@
 """
 Small HTTP server for the frontend: upload a video, get the ball detections back.
+Also GET /api/simulate, which runs physics.backproject() on fixed test inputs.
 
 Usage:
   python server/app.py
 Then start the frontend (cd frontend && npm run dev). Vite forwards /api/* here.
 """
+import importlib
 import os
 import subprocess
 import tempfile
+import traceback
 import uuid
 
 import imageio_ffmpeg
@@ -58,6 +61,34 @@ def detect():
     data["video"] = video.filename
     data["video_url"] = f"/api/videos/{web_name}"
     return jsonify(data)
+
+
+# Test inputs for step 1, hardcoded from cricket-synth label main1000_000009.json.
+# true_Z is the label's depth_m (the real distance from the camera), for comparing.
+TEST_CAMERA = dict(fx=2743.353363255959, cx=960.0, cy=540.0)
+TEST_FRAMES = [
+    dict(frame=22, u=756.9, v=152.6, radius_px=13.07, true_Z=7.513),
+    dict(frame=30, u=867.5, v=510.0, radius_px=6.56, true_Z=14.979),
+    dict(frame=40, u=907.0, v=629.2, radius_px=4.22, true_Z=23.298),
+]
+
+
+@app.get("/api/simulate")
+def simulate():
+    """Call physics.backproject(u, v, radius_px, fx, cx, cy) on each test frame
+    and return what it gives back. physics.py is re-imported on every request,
+    so edits to it show up without restarting the server."""
+    try:
+        import physics
+        importlib.reload(physics)
+        results = []
+        for f in TEST_FRAMES:
+            output = physics.backproject(f["u"], f["v"], f["radius_px"], **TEST_CAMERA)
+            results.append(dict(f, output=output))
+        return jsonify(camera=TEST_CAMERA, results=results)
+    except Exception:
+        # Send the full error back, so it can be read from the response.
+        return jsonify(error=traceback.format_exc()), 500
 
 
 @app.get("/api/videos/<name>")

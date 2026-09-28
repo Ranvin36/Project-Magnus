@@ -40,6 +40,7 @@ CRICKET_SYNTH_ROOT = r"D:\Git-Repos\MAGNUS\Ball-Tracking\cricket-synth\out"
 
 WINDOW_SIZE = rt.WINDOW_SIZE
 VAL_FRACTION = rt.VAL_FRACTION
+TEST_FRACTION = rt.TEST_FRACTION
 POS_WEIGHT = rt.POS_WEIGHT
 
 BATCH_SIZE = 4  # local RTX 2050 has 4GB VRAM
@@ -48,9 +49,14 @@ NUM_EPOCHS = 20
 EARLY_STOPPING_PATIENCE = 3
 CHECKPOINT_EVERY = 200
 
-CHECKPOINT_PATH = "checkpoints/cricket_synth_checkpoint.pt"
-LOG_PATH = "checkpoints/cricket_synth_training_log.txt"
-BEST_MODEL_PATH = "checkpoints/cricket_synth_best_model.pt"
+# Separate filenames from the old 80/20 (train/val-only) run -- that run's
+# weights already saw every clip either via gradient updates or via
+# checkpoint-selection val_loss, so they can't be reused under the new
+# 70/15/15 split without leaking into the new held-out test set.
+CHECKPOINT_PATH = "checkpoints/cricket_synth_70_15_15_checkpoint.pt"
+LOG_PATH = "checkpoints/cricket_synth_70_15_15_training_log.txt"
+BEST_MODEL_PATH = "checkpoints/cricket_synth_70_15_15_best_model.pt"
+SPLIT_MANIFEST_PATH = "checkpoints/cricket_synth_70_15_15_split.json"
 os.makedirs("checkpoints", exist_ok=True)
 
 
@@ -134,21 +140,29 @@ def main():
     clip_ids = [get_clip_id(s) for s in samples]
     unique_clips = sorted(set(clip_ids))
 
-    rng = random.Random(42)
-    shuffled_clips = unique_clips[:]
-    rng.shuffle(shuffled_clips)
-
-    n_val_clips = max(1, int(len(shuffled_clips) * VAL_FRACTION))
-    val_clips = set(shuffled_clips[:n_val_clips])
-    train_clips = set(shuffled_clips[n_val_clips:])
+    train_clips, val_clips, test_clips = rt.split_clips(
+        unique_clips, test_fraction=TEST_FRACTION, val_fraction=VAL_FRACTION,
+    )
 
     train_indices = [i for i, cid in enumerate(clip_ids) if cid in train_clips]
     val_indices = [i for i, cid in enumerate(clip_ids) if cid in val_clips]
+    test_indices = [i for i, cid in enumerate(clip_ids) if cid in test_clips]
+    rng = random.Random(42)
     rng.shuffle(train_indices)
     rng.shuffle(val_indices)
 
     log(f"Train samples: {len(train_indices)} ({len(train_clips)} clips), "
-        f"Val samples: {len(val_indices)} ({len(val_clips)} clips)")
+        f"Val samples: {len(val_indices)} ({len(val_clips)} clips), "
+        f"Test samples: {len(test_indices)} ({len(test_clips)} clips, held out -- not used this run)")
+
+    if not os.path.exists(SPLIT_MANIFEST_PATH):
+        with open(SPLIT_MANIFEST_PATH, "w") as f:
+            json.dump({
+                "train_clips": sorted(train_clips),
+                "val_clips": sorted(val_clips),
+                "test_clips": sorted(test_clips),
+            }, f, indent=2)
+        log(f"Wrote split manifest -> {SPLIT_MANIFEST_PATH}")
 
     train_subset_full = torch.utils.data.Subset(heatmap_dataset, train_indices)
     val_subset_full = torch.utils.data.Subset(heatmap_dataset, val_indices)

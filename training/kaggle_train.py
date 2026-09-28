@@ -45,7 +45,9 @@ import torch.nn as nn
 
 WINDOW_SIZE = 3
 HEATMAP_SIGMA = 5
-VAL_FRACTION = 0.2
+VAL_FRACTION = 0.15
+TEST_FRACTION = 0.15
+SPLIT_SEED = 42
 BATCH_SIZE = 8
 POS_WEIGHT = 200.0
 NUM_EPOCHS = 20
@@ -57,9 +59,12 @@ WORK_DIR = "/kaggle/working" if ON_KAGGLE else "checkpoints"
 
 os.makedirs(WORK_DIR, exist_ok=True)
 
-CHECKPOINT_PATH = os.path.join(WORK_DIR, "cricket_synth_checkpoint.pt")
-LOG_PATH = os.path.join(WORK_DIR, "cricket_synth_training_log.txt")
-BEST_MODEL_PATH = os.path.join(WORK_DIR, "cricket_synth_best_model.pt")
+# Separate filenames from the old 80/20 (train/val-only) run -- see
+# train_cricket_synth.py for why those weights can't be reused here.
+CHECKPOINT_PATH = os.path.join(WORK_DIR, "cricket_synth_70-15-15_checkpoint.pt")
+LOG_PATH = os.path.join(WORK_DIR, "cricket_synth_70-15-15_training_log.txt")
+BEST_MODEL_PATH = os.path.join(WORK_DIR, "cricket_synth_70-15-15_best_model.pt")
+SPLIT_MANIFEST_PATH = os.path.join(WORK_DIR, "cricket_synth_70-15-15_split.json")
 
 
 def log(msg):
@@ -90,14 +95,16 @@ def restore_previous_checkpoint():
         return
     if not os.path.isdir("/kaggle/input"):
         return
+    checkpoint_name = os.path.basename(CHECKPOINT_PATH)
     for name in os.listdir("/kaggle/input"):
         candidate_dir = os.path.join("/kaggle/input", name)
         for dirpath, _dirnames, filenames in os.walk(candidate_dir):
-            if "cricket_synth_checkpoint.pt" in filenames:
-                src = os.path.join(dirpath, "cricket_synth_checkpoint.pt")
+            if checkpoint_name in filenames:
+                src = os.path.join(dirpath, checkpoint_name)
                 log(f"Found previous checkpoint at {src}, copying into {WORK_DIR}...")
                 shutil.copy(src, CHECKPOINT_PATH)
-                for extra in ("cricket_synth_best_model.pt", "cricket_synth_training_log.txt"):
+                for extra in (os.path.basename(BEST_MODEL_PATH), os.path.basename(LOG_PATH),
+                              os.path.basename(SPLIT_MANIFEST_PATH)):
                     extra_src = os.path.join(dirpath, extra)
                     if os.path.exists(extra_src):
                         shutil.copy(extra_src, os.path.join(WORK_DIR, extra))
@@ -316,18 +323,33 @@ def main():
     clip_ids = [get_clip_id(s) for s in samples]
     unique_clips = sorted(set(clip_ids))
 
-    rng = random.Random(42)
+    # Test is carved out first and never touched below -- training and
+    # checkpoint-selection only ever see train_indices/val_indices.
+    split_rng = random.Random(SPLIT_SEED)
     shuffled_clips = unique_clips[:]
-    rng.shuffle(shuffled_clips)
+    split_rng.shuffle(shuffled_clips)
 
+    n_test_clips = max(1, int(len(shuffled_clips) * TEST_FRACTION))
     n_val_clips = max(1, int(len(shuffled_clips) * VAL_FRACTION))
-    val_clips = set(shuffled_clips[:n_val_clips])
-    train_clips = set(shuffled_clips[n_val_clips:])
+    test_clips = set(shuffled_clips[:n_test_clips])
+    val_clips = set(shuffled_clips[n_test_clips:n_test_clips + n_val_clips])
+    train_clips = set(shuffled_clips[n_test_clips + n_val_clips:])
 
     train_indices = [i for i, cid in enumerate(clip_ids) if cid in train_clips]
     val_indices = [i for i, cid in enumerate(clip_ids) if cid in val_clips]
+    test_indices = [i for i, cid in enumerate(clip_ids) if cid in test_clips]
+    rng = random.Random(42)
     rng.shuffle(train_indices)
     rng.shuffle(val_indices)
+
+    if not os.path.exists(SPLIT_MANIFEST_PATH):
+        with open(SPLIT_MANIFEST_PATH, "w") as f:
+            json.dump({
+                "train_clips": sorted(train_clips),
+                "val_clips": sorted(val_clips),
+                "test_clips": sorted(test_clips),
+            }, f, indent=2)
+        log(f"Wrote split manifest -> {SPLIT_MANIFEST_PATH}")
 
     log(f"Train samples: {len(train_indices)} ({len(train_clips)} clips), "
         f"Val samples: {len(val_indices)} ({len(val_clips)} clips)")

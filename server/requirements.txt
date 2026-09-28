@@ -3,3 +3,6 @@ imageio-ffmpeg
 torch
 opencv-python
 numpy
+
+
+claude --resume 621438f3-9912-4d44-98ef-2a8e1427965f

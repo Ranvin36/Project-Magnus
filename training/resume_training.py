@@ -8,6 +8,8 @@ remains here is the dataset-agnostic core -- model architecture, frame/label
 loading, and Gaussian-heatmap generation -- imported as `resume_training as rt`
 by train_cricket_synth.py and by notebooks/ball_detection_tracking.ipynb.
 """
+import random
+
 import cv2
 import numpy as np
 import torch
@@ -15,8 +17,27 @@ import torch.nn as nn
 
 WINDOW_SIZE = 3
 HEATMAP_SIGMA = 5
-VAL_FRACTION = 0.2
+VAL_FRACTION = 0.15
+TEST_FRACTION = 0.15
+SPLIT_SEED = 42
 POS_WEIGHT = 200.0
+
+
+def split_clips(unique_clips, test_fraction=TEST_FRACTION, val_fraction=VAL_FRACTION, seed=SPLIT_SEED):
+    """Clip-level 70/15/15 train/val/test split (deterministic given the same
+    clip list and seed). Test is carved out first and never touched by
+    training or checkpoint-selection, so it stays a genuine held-out set."""
+    rng = random.Random(seed)
+    shuffled = sorted(unique_clips)
+    rng.shuffle(shuffled)
+
+    n_test = max(1, int(len(shuffled) * test_fraction))
+    n_val = max(1, int(len(shuffled) * val_fraction))
+
+    test_clips = set(shuffled[:n_test])
+    val_clips = set(shuffled[n_test:n_test + n_val])
+    train_clips = set(shuffled[n_test + n_val:])
+    return train_clips, val_clips, test_clips
 
 
 def generate_heatmap(x, y, visibility, H, W, sigma=HEATMAP_SIGMA):
