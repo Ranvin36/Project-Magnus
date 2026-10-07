@@ -19,7 +19,7 @@ import detection
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
 DEFAULT_INPUT = os.path.join(ROOT, "trajectories")
-DEFAULT_WEIGHTS = os.path.join(ROOT, "checkpoints", "cricket_synth_70_15_15_best_model.pt")
+DEFAULT_WEIGHTS = os.path.join(ROOT, "checkpoints", "cricket_synth_70_15_15", "cricket_synth_70_15_15_best_model.pt")
 DEFAULT_OUTPUT = os.path.join(ROOT, "output", "pipeline")
 VIDEO_EXTS = (".mp4", ".mov", ".avi", ".mkv")
 

@@ -14,8 +14,8 @@ The model, dataset and heatmap code are exec'd straight out of the notebook,
 so the benchmark always matches what the notebook trains.
 
 Usage (local or on a rented GPU box, from the repo root):
-  python training/benchmark_epoch.py --data-root <path to cricket-synth/out>
-  python training/benchmark_epoch.py --data-root ... --json results.json
+  python tools/benchmark_epoch.py --data-root <path to cricket-synth/out>
+  python tools/benchmark_epoch.py --data-root ... --json results.json
   # Kaggle (script + notebook uploaded as inputs, dataset attached):
   !python benchmark_epoch.py --data-root /kaggle/input/<dataset>/out \n      --notebook ball_detection_tracking.ipynb --batch-sizes 4 8 16 32
 
@@ -52,6 +52,7 @@ def load_notebook_code(data_root, notebook=NOTEBOOK):
 
     g = {"__name__": "notebook"}
     exec(cell_with("import torch.nn as nn"), g)
+    g["DATASET"] = os.path.basename(os.path.normpath(data_root))  # only used in a printout
     g["CLIPS_DIR"] = os.path.join(data_root, "clips")
     g["LABELS_DIR"] = os.path.join(data_root, "labels")
     for marker in ("def build_samples_cricket_synth", "class TrackNetDataset", "def generate_heatmap",

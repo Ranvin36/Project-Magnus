@@ -1,8 +1,8 @@
 """
-Print one row per training run from checkpoints/*_summary.json (written at
+Print one row per training run from checkpoints/<run>/*_summary.json (written at
 the end of every notebook training run), best val_loss first.
 
-Usage: python training/compare_runs.py
+Usage: python tools/compare_runs.py
 """
 import glob
 import json
@@ -11,7 +11,7 @@ import os
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 rows = []
-for path in glob.glob(os.path.join(REPO, "checkpoints", "*_summary.json")):
+for path in glob.glob(os.path.join(REPO, "checkpoints", "*", "*_summary.json")):
     with open(path) as f:
         s = json.load(f)
     h, c = s["history"], s["config"]

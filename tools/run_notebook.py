@@ -6,14 +6,14 @@ single source of truth, this only executes it.
 Settings come from environment variables (see the notebook's Run
 Configuration cell), e.g.:
 
-  RUN_NAME=bs16_lr3e-4 BATCH_SIZE=16 LR=3e-4 python training/run_notebook.py
+  RUN_NAME=bs16_lr3e-4 BATCH_SIZE=16 LR=3e-4 python tools/run_notebook.py
 
 Modes:
   (default)          train, then evaluate on the held-out test set
   --train-only       stop right after training -- use this for hyperparameter
                      probes, so tuning decisions never look at the test set
   --with-videos      also run the real-footage tracking cells at the end
-                     (needs dataset/test/*.mp4, which isn't in git)
+                     (needs data/cricket-synth/videos/*.mp4, which isn't in git)
 
 Stdout shows each cell's prints as they happen; run it inside tmux (or with
 nohup) so it survives a dropped SSH/browser connection.
